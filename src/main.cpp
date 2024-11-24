@@ -9,21 +9,35 @@ typedef struct Message {
     bool alarm;
 } Message;
 
-bool currentAlarmState;
+SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
+bool alarmState;
 int alarmStartedAt;
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-    auto data = (Message *) incomingData;
-    if (currentAlarmState == data->alarm) {
-        return;
-    }
-    currentAlarmState = data->alarm;
-    if (data->alarm) {
-        alarmStartedAt = millis();
-        digitalWrite(ALARM_PIN, LOW);
-    } else {
-        digitalWrite(ALARM_PIN, HIGH);
-    }
 
+void setAlarmState(bool state) {
+    alarmState = state;
+    if (alarmState) {
+        alarmStartedAt = millis();
+    } else {
+        alarmStartedAt = 0;
+    }
+}
+
+
+void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+    if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE) {
+        auto data = (Message *) incomingData;
+        if (alarmState == data->alarm) {
+            xSemaphoreGive(mutex);
+            return;
+        }
+        setAlarmState(data->alarm);
+        if (alarmState) {
+            digitalWrite(ALARM_PIN, LOW);
+        } else {
+            digitalWrite(ALARM_PIN, HIGH);
+        }
+        xSemaphoreGive(mutex);
+    }
 }
 
 void setup() {
@@ -39,8 +53,11 @@ void setup() {
 }
 
 void loop() {
-    if (currentAlarmState && (millis() - alarmStartedAt) > MAX_ALARM_DURATION_IN_MSEC) {
-        currentAlarmState = false;
-        digitalWrite(ALARM_PIN, HIGH);
+    if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE) {
+        if (alarmState && (millis() - alarmStartedAt) > MAX_ALARM_DURATION_IN_MSEC) {
+            alarmState = false;
+            digitalWrite(ALARM_PIN, HIGH);
+        }
+        xSemaphoreGive(mutex);
     }
 }
