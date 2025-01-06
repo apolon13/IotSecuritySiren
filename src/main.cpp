@@ -55,8 +55,6 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     }
 
     if (Semaphore::take()) {
-        Serial.println(alarmState);
-        Serial.println(data->alarm);
         if (alarmState == data->alarm) {
             Semaphore::give();
             return;
